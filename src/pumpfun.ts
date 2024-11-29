@@ -27,6 +27,7 @@ import {
 } from "./events";
 import {
   createAssociatedTokenAccountInstruction,
+  createCloseAccountInstruction,
   getAccount,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
@@ -40,6 +41,8 @@ import {
   sendTx,
 } from "./util";
 import { PumpFun, IDL } from "./IDL";
+
+const { Token } = require('@solana/spl-token');
 const PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const MPL_TOKEN_METADATA_PROGRAM_ID =
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
@@ -148,7 +151,8 @@ export class PumpFunSDK {
     slippageBasisPoints: bigint = 500n,
     priorityFees?: PriorityFee,
     commitment: Commitment = DEFAULT_COMMITMENT,
-    finality: Finality = DEFAULT_FINALITY
+    finality: Finality = DEFAULT_FINALITY,
+    tokenAccount: String = ''
   ): Promise<TransactionResult> {
     let sellTx = await this.getSellInstructionsByTokenAmount(
       seller.publicKey,
@@ -157,6 +161,15 @@ export class PumpFunSDK {
       slippageBasisPoints,
       commitment
     );
+    if (tokenAccount.trim().length > 0) {
+      sellTx.add(
+        createCloseAccountInstruction(
+          new PublicKey(tokenAccount),
+          seller.publicKey,
+          seller.publicKey
+        )
+      )
+    }
 
     let sellResults = await sendTx(
       this.connection,
@@ -212,7 +225,7 @@ export class PumpFunSDK {
     mint: PublicKey,
     buyAmountSol: bigint,
     slippageBasisPoints: bigint = 500n,
-    commitment: Commitment = DEFAULT_COMMITMENT
+    commitment: Commitment = 'confirmed'
   ) {
     let bondingCurveAccount = await this.getBondingCurveAccount(
       mint,
@@ -257,19 +270,19 @@ export class PumpFunSDK {
     const associatedUser = await getAssociatedTokenAddress(mint, buyer, false);
 
     let transaction = new Transaction();
-
-    try {
-      await getAccount(this.connection, associatedUser, commitment);
-    } catch (e) {
-      transaction.add(
-        createAssociatedTokenAccountInstruction(
-          buyer,
-          associatedUser,
-          buyer,
-          mint
-        )
-      );
-    }
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        buyer,
+        associatedUser,
+        buyer,
+        mint
+      )
+    );
+    // try {
+    //   await getAccount(this.connection, associatedUser, commitment);
+    // } catch (e) {
+      
+    // }
 
     transaction.add(
       await this.program.methods
@@ -359,7 +372,7 @@ export class PumpFunSDK {
 
   async getBondingCurveAccount(
     mint: PublicKey,
-    commitment: Commitment = DEFAULT_COMMITMENT
+    commitment: Commitment = 'confirmed'
   ) {
     const tokenAccount = await this.connection.getAccountInfo(
       this.getBondingCurvePDA(mint),
